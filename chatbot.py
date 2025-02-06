@@ -1,11 +1,26 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 import ollama
 import re
 from fuzzywuzzy import process  # For typo handling
 from collections import deque  # For maintaining chat history
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 app = FastAPI()
+
+# Rate limiter: Max 6 requests per minute per user
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"error": "Too many requests. Please wait and try again later."}
+    )
 
 # Store chat history (Short-term memory)
 chat_history = deque(maxlen=5)  # Keeps the last 5 messages
@@ -95,33 +110,60 @@ html_template = """
 async def serve_chatbot():
     return HTMLResponse(content=html_template)
 
-# Chatbot API for handling user messages
+# Chatbot API with rate limiting and error handling
 
 
 @app.post("/chat")
+@limiter.limit("6/minute")  # Limit each user to 5 requests per minute
 async def chat(request: Request):
-    data = await request.json()
-    user_input = preprocess_input(data.get("text", ""))  # Apply preprocessing
+    try:
+        data = await request.json()
+        user_input = preprocess_input(data.get("text", "").strip())
 
-    # Append user input to chat history
-    chat_history.append({"role": "user", "content": user_input})
+        if not user_input:
+            raise HTTPException(
+                status_code=400, detail="Input cannot be empty.")
 
-    # Generate system prompt with chat history for context
-    system_prompt = """
-        You are a Dalhousie University Help Desk AI.
-        - Answer ONLY questions related to Dalhousie IT support (Wi-Fi, password resets, email issues, software access).
-        - If a question is not IT-related, politely say you cannot answer.
-        - Be concise and provide direct solutions.
-        - If needed, suggest the user contact Dalhousie IT at helpdesk@cs.dal.ca.
-    """
-    conversation = [
-        {"role": "system", "content": system_prompt}] + list(chat_history)
+        # Append user input to chat history
+        chat_history.append({"role": "user", "content": user_input})
 
-    # Call LLaMA 2 with chat history
-    response = ollama.chat(model="llama2:13b", messages=conversation)
+        # Generate system prompt with chat history for context
+        system_prompt = """
+            You are a highly knowledgeable and professional Dalhousie University Help Desk AI. 
+            Your job is to assist users with IT-related issues efficiently.
+    
+            ### Guidelines:
+            1. **Scope:** Answer ONLY IT-related questions (e.g., Wi-Fi, password resets, software access).
+            2. **Clarity:** Responses must be clear, structured, and avoid unnecessary complexity.
+            3. **Conciseness:** Keep responses short and direct unless a detailed explanation is required.
+            4. **No Hallucinations:** If a question is outside your expertise, say: 
+            "I'm here to assist with IT-related issues at Dalhousie University. For non-IT questions, please refer to the appropriate department."
+            5. **Guidance & Links:** When possible, provide official Dalhousie links for self-help.
+            6. **Follow-up Questions:** If needed, prompt the user for clarification instead of assuming.
+    
+            ### Example Interactions:
+            - **User:** "How do I reset my password?"
+            - **Bot:** "You can reset your Dalhousie NetID password at https://password.dal.ca. If you need further assistance, contact helpdesk@cs.dal.ca."
 
-    # Save bot response in history
-    chat_history.append(
-        {"role": "assistant", "content": response["message"]["content"]})
+            - **User:** "My Wi-Fi isn't working."
+            - **Bot:** "Are you trying to connect to Eduroam or Dal Guest Wi-Fi? If it's Eduroam, use your NetID@dal.ca credentials."
 
-    return JSONResponse({"response": response["message"]["content"]})
+        """
+        conversation = [
+            {"role": "system", "content": system_prompt}] + list(chat_history)
+
+        # Call LLaMA 2 with chat history
+        response = ollama.chat(model="llama2:13b", messages=conversation)
+
+        bot_response = response["message"]["content"]
+
+        # Append bot response to history
+        chat_history.append({"role": "assistant", "content": bot_response})
+
+        return JSONResponse({"response": bot_response})
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": "An error occurred while processing your request."}
+        )
