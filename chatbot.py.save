@@ -59,7 +59,7 @@ html_template = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dalhousie Help Desk Chatbot</title>
+    <title>Local AI Chatbot</title>
     <style>
         body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
         .chat-container { max-width: 600px; margin: auto; text-align: left; }
@@ -69,7 +69,7 @@ html_template = """
     </style>
 </head>
 <body>
-    <h1>Computer Science Help Desk Chatbot</h1>
+    <h1>Dalhousie Help Desk Chatbot</h1>
     <div class="chat-container" id="chatbox"></div>
     <input type="text" id="userInput" placeholder="Type a message..." onkeypress="handleKeyPress(event)">
     <button onclick="sendMessage()">Send</button>
@@ -78,7 +78,7 @@ html_template = """
         async function sendMessage() {
             let userInput = document.getElementById("userInput").value;
             if (!userInput.trim()) return;
-            
+
             let chatbox = document.getElementById("chatbox");
             chatbox.innerHTML += `<div class="user-message">${userInput}</div>`;
             document.getElementById("userInput").value = "";
@@ -110,11 +110,11 @@ html_template = """
 async def serve_chatbot():
     return HTMLResponse(content=html_template)
 
-# Chatbot API with rate limiting and improved response formatting
+# Chatbot API with rate limiting and error handling
 
 
 @app.post("/chat")
-@limiter.limit("6/minute")  # Limit each user to 6 requests per minute
+@limiter.limit("6/minute")  # Limit each user to 5 requests per minute
 async def chat(request: Request):
     try:
         data = await request.json()
@@ -129,36 +129,45 @@ async def chat(request: Request):
 
         # Generate system prompt with chat history for context
         system_prompt = """
-        You are a highly knowledgeable and professional Dalhousie University Help Desk AI. 
-        Your job is to assist users with IT-related issues efficiently.
+            You are a highly knowledgeable and professional Dalhousie University Help Desk AI.
+            Your job is to assist users with IT-related issues efficiently.
 
-        ### Guidelines:
-        1. **Scope:** Answer ONLY IT-related questions (e.g., Wi-Fi, password resets, software access).
-        2. **Clarity:** Responses must be clear, structured, and avoid unnecessary complexity.
-        3. **Conciseness:** Keep responses short and direct unless a detailed explanation is required.
-        4. **No Hallucinations:** If a question is outside your expertise, say: 
-        "I'm here to assist with IT-related issues at Dalhousie University. For non-IT questions, please refer to the appropriate department."
-        5. **Guidance & Links:** When possible, provide official Dalhousie links for self-help.
-        6. **Follow-up Questions:** If needed, prompt the user for clarification instead of assuming.
+            ### Guidelines:
+            1. **Scope:** Answer ONLY IT-related questions (e.g., Wi-Fi, password resets, software access).
+            2. **Clarity:** Responses must be clear, structured, and avoid unnecessary complexity.
+            3. **Conciseness:** Keep responses short and direct unless a detailed explanation is required.
+            4. **No Hallucinations:** If a question is outside your expertise, say:
+            "I'm here to assist with IT-related issues at Dalhousie University. For non-IT questions, please refer to the appropriate department."
+            5. **Guidance & Links:** When possible, provide official Dalhousie links for self-help.
+            6. **Follow-up Questions:** If needed, prompt the user for clarification instead of assuming.
+
+            ### Example Interactions:
+            - **User:** "How do I reset my password?"
+            - **Bot:** "You can reset your Dalhousie NetID password at https://password.dal.ca. If you need further assistance, contact helpdesk@cs.dal.ca."
+
+            - **User:** "My Wi-Fi isn't working."
+            - **Bot:** "Are you trying to connect to Eduroam or Dal Guest Wi-Fi? If it's Eduroam, use your NetID@dal.ca credentials."
+
         """
-
         conversation = [
             {"role": "system", "content": system_prompt}] + list(chat_history)
 
         # Call LLaMA 2 with chat history
         response = ollama.chat(model="llama2:13b", messages=conversation)
 
-        bot_response = response["message"]["content"]
+bot_response = response["message"]["content"]
 
-        # Format specific responses for clarity
-        if "password reset" in user_input:
-            bot_response = "**Password Reset Instructions:**\n- Visit: [Dalhousie Password Reset](https://password.dal.ca)\n- If locked out, contact: helpdesk@cs.dal.ca"
+# Format response for better readability
+if "password reset" in user_input:
+    bot_response = "**Password Reset Instructions:**\n- Visit: [Dalhousie Password Reset](https://password.dal.ca)\n- If locked out, contact: helpdesk@cs.dal.ca"
 
-        elif "wifi" in user_input or "internet" in user_input:
-            bot_response = "**Wi-Fi Troubleshooting:**\n1. Ensure you're connecting to **Eduroam/Dalhousie** using your NetID@dal.ca.\n2. If you forgot your credentials, reset them at https://password.dal.ca.\n3. Still not working? Contact helpdesk@cs.dal.ca."
+elif "wifi" in user_input or "internet" in user_input:
+    bot_response = "**Wi-Fi Troubleshooting:**\n1. Ensure you're connecting to **Eduroam** using your NetID@dal.ca.\n2. If you forgot your credentials, reset them at https://password.dal.ca.\n3. Still not working? Contact helpdesk@cs.dal.ca."
 
-        elif "email" in user_input:
-            bot_response = "**Email Access Help:**\n- Use your **Dalhousie NetID** to log in at [Dalhousie Email](https://outlook.office365.com).\n- If you forgot your password, reset it at https://password.dal.ca.\n- Need further assistance? Contact IT."
+elif "email" in user_input:
+    bot_response = "**Email Access Help:**\n- Use your **Dalhousie NetID** to log in at [Dalhousie Email](https://outlook.office365.com).\n- If you forgot your password, reset it at https://password.dal.ca.\n- Need further assistance? Contact IT."
+
+return JSONResponse({"response": bot_response})
 
         # Append bot response to history
         chat_history.append({"role": "assistant", "content": bot_response})
