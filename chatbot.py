@@ -65,12 +65,14 @@ html_template = """
         .chat-container { max-width: 600px; margin: auto; text-align: left; }
         .user-message { background: #0084ff; color: white; padding: 10px; border-radius: 5px; margin: 5px 0; text-align: right; }
         .bot-message { background: #e5e5ea; padding: 10px; border-radius: 5px; margin: 5px 0; text-align: left; }
+        .loading { text-align: center; font-size: 14px; color: gray; display: none; }
         input, button { padding: 10px; margin: 10px 0; width: 100%; }
     </style>
 </head>
 <body>
     <h1>Computer Science Help Desk Chatbot</h1>
     <div class="chat-container" id="chatbox"></div>
+    <p class="loading" id="loading">AI is thinking...</p>
     <input type="text" id="userInput" placeholder="Type a message..." onkeypress="handleKeyPress(event)">
     <button onclick="sendMessage()">Send</button>
 
@@ -80,17 +82,25 @@ html_template = """
             if (!userInput.trim()) return;
             
             let chatbox = document.getElementById("chatbox");
+            let loadingIndicator = document.getElementById("loading");
+            
             chatbox.innerHTML += `<div class="user-message">${userInput}</div>`;
             document.getElementById("userInput").value = "";
-
-            let response = await fetch("/chat", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: userInput })
-            });
-
-            let result = await response.json();
-            chatbox.innerHTML += `<div class="bot-message">${result.response}</div>`;
+            loadingIndicator.style.display = "block"; // Show loading message
+            
+            try {
+                let response = await fetch("/chat", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ text: userInput })
+                });
+                let result = await response.json();
+                chatbox.innerHTML += `<div class="bot-message">${result.response}</div>`;
+            } catch (error) {
+                chatbox.innerHTML += `<div class="bot-message" style="color:red;">Error fetching response</div>`;
+            } finally {
+                loadingIndicator.style.display = "none"; // Hide loading message
+            }
         }
 
         function handleKeyPress(event) {
@@ -101,6 +111,7 @@ html_template = """
     </script>
 </body>
 </html>
+
 """
 
 # Serve the HTML page at `/`
@@ -152,7 +163,7 @@ async def chat(request: Request):
 
         # Format specific responses for clarity
         if "password reset" in user_input:
-            bot_response = "**Password Reset Instructions:**\n- Visit: [Dalhousie Password Reset](https://password.dal.ca)\n- If locked out, contact: helpdesk@cs.dal.ca"
+            bot_response = "**Password Reset Instructions:**\n- Visit: [Dalhousie Password Reset](https://csid.cs.dal.ca)\n- If locked out, contact: helpdesk@cs.dal.ca"
 
         elif "wifi" in user_input or "internet" in user_input:
             bot_response = "**Wi-Fi Troubleshooting:**\n1. Ensure you're connecting to **Eduroam/Dalhousie** using your NetID@dal.ca.\n2. If you forgot your credentials, reset them at https://password.dal.ca.\n3. Still not working? Contact helpdesk@cs.dal.ca."
