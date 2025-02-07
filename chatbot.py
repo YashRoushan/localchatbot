@@ -108,10 +108,27 @@ html_template = """
                 sendMessage();
             }
         }
+
+        // Refresh page if inactive for 1 minute
+        let inactiveTime = 0;
+        function resetInactiveTime() {
+            inactiveTime = 0;
+        }
+
+        function incrementInactiveTime() {
+            inactiveTime += 1;
+            if (inactiveTime >= 15) { // 1 minute
+                location.reload();
+            }
+        }
+
+        document.addEventListener("mousemove", resetInactiveTime);
+        document.addEventListener("keypress", resetInactiveTime);
+        setInterval(incrementInactiveTime, 1000); // Check every second
+
     </script>
 </body>
 </html>
-
 """
 
 # Serve the HTML page at `/`
