@@ -63,7 +63,7 @@ html_template = """
     <style>
         body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
         .chat-container { max-width: 600px; margin: auto; text-align: left; }
-        .user-message { background: #0084ff; color: white; padding: 10px; border-radius: 5px; margin: 5px 0; text-align: right; }
+        .user-message { background: #0084ff; color: white; padding: 10px; border-radius: 5px; margin: 5px 0; text-align: right; } //#FFD400
         .bot-message { background: #e5e5ea; padding: 10px; border-radius: 5px; margin: 5px 0; text-align: left; }
         .loading { text-align: center; font-size: 14px; color: gray; display: none; }
         input, button { padding: 10px; margin: 10px 0; width: 100%; }
@@ -109,7 +109,7 @@ html_template = """
             }
         }
 
-        // Refresh page if inactive for 1 minute
+        //Refresh page if inactive for 1 minute
         let inactiveTime = 0;
         function resetInactiveTime() {
             inactiveTime = 0;
@@ -117,7 +117,7 @@ html_template = """
 
         function incrementInactiveTime() {
             inactiveTime += 1;
-            if (inactiveTime >= 15) { // 1 minute
+            if (inactiveTime >= 600) { // 1 minute
                 location.reload();
             }
         }
@@ -157,14 +157,14 @@ async def chat(request: Request):
 
         # Generate system prompt with chat history for context
         system_prompt = """
-        You are a highly knowledgeable and professional Dalhousie University Help Desk AI. 
-        Your job is to assist users with IT-related issues efficiently.
+        You are a highly knowledgeable and professional Goldberg Computer Science (Dalhousie University) Help Desk AI.
+        Your job is to assist users with IT-related issues related to the Computer Science department.
 
         ### Guidelines:
         1. **Scope:** Answer ONLY IT-related questions (e.g., Wi-Fi, password resets, software access).
         2. **Clarity:** Responses must be clear, structured, and avoid unnecessary complexity.
         3. **Conciseness:** Keep responses short and direct unless a detailed explanation is required.
-        4. **No Hallucinations:** If a question is outside your expertise, say: 
+        4. **No Hallucinations:** If a question is outside your expertise, say:
         "I'm here to assist with IT-related issues at Dalhousie University. For non-IT questions, please refer to the appropriate department."
         5. **Guidance & Links:** When possible, provide official Dalhousie links for self-help.
         6. **Follow-up Questions:** If needed, prompt the user for clarification instead of assuming.
@@ -184,9 +184,6 @@ async def chat(request: Request):
 
         elif "wifi" in user_input or "internet" in user_input:
             bot_response = "**Wi-Fi Troubleshooting:**\n1. Ensure you're connecting to **Eduroam/Dalhousie** using your NetID@dal.ca.\n2. If you forgot your credentials, reset them at https://password.dal.ca.\n3. Still not working? Contact helpdesk@cs.dal.ca."
-
-        elif "email" in user_input:
-            bot_response = "**Email Access Help:**\n- Use your **Dalhousie NetID** to log in at [Dalhousie Email](https://outlook.office365.com).\n- If you forgot your password, reset it at https://password.dal.ca.\n- Need further assistance? Contact IT."
 
         # Append bot response to history
         chat_history.append({"role": "assistant", "content": bot_response})
