@@ -1,0 +1,38 @@
+[
+    {
+        "keyword": "password reset",
+        "link": "https://csid.cs.dal.ca"
+    },
+    {
+        "keyword": "email",
+        "link": "https://outlook.office.com"
+    },
+    {
+        "keyword": "wifi troubleshooting",
+        "link": "https://wireless.dal.ca"
+    },
+    {
+        "keyword": "vpn issues",
+        "link": "https://vpn.dal.ca"
+    },
+    {
+        "keyword": "equipment loan",
+        "link": "https://helpdesk.cs.dal.ca"
+    },
+    {
+        "keyword": "borrow laptop",
+        "link": "https://helpdesk.cs.dal.ca"
+    },
+    {
+        "keyword": "room booking",
+        "link": "https://campusbookings.dal.ca/p/"
+    },
+    {
+        "keyword": "printer setup",
+        "link": "https://print.cs.dal.ca/"
+    },
+    {
+        "keyword": "building access",
+        "link": "https://helpdesk.cs.dal.ca/form/access-request"
+    }
+]

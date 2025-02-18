@@ -1,3 +1,4 @@
+import json
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 import ollama
@@ -21,6 +22,20 @@ async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
         status_code=429,
         content={"error": "Too many requests. Please wait and try again later."}
     )
+
+# Load links from links.json
+
+
+def load_links():
+    try:
+        with open("links.json", "r") as file:
+            return json.load(file)
+    except Exception as e:
+        print(f"Error loading links.json: {e}")
+        return {}
+
+
+links_data = load_links()
 
 # Store chat history (Short-term memory)
 chat_history = deque(maxlen=5)  # Keeps the last 5 messages
@@ -63,7 +78,7 @@ html_template = """
     <style>
         body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
         .chat-container { max-width: 600px; margin: auto; text-align: left; }
-        .user-message { background: #0084ff; color: white; padding: 10px; border-radius: 5px; margin: 5px 0; text-align: right; } //#FFD400
+        .user-message { background: #0084ff; color: white; padding: 10px; border-radius: 5px; margin: 5px 0; text-align: right; }
         .bot-message { background: #e5e5ea; padding: 10px; border-radius: 5px; margin: 5px 0; text-align: left; }
         .loading { text-align: center; font-size: 14px; color: gray; display: none; }
         input, button { padding: 10px; margin: 10px 0; width: 100%; }
@@ -108,37 +123,15 @@ html_template = """
                 sendMessage();
             }
         }
-
-        //Refresh page if inactive for 1 minute
-        let inactiveTime = 0;
-        function resetInactiveTime() {
-            inactiveTime = 0;
-        }
-
-        function incrementInactiveTime() {
-            inactiveTime += 1;
-            if (inactiveTime >= 600) { // 1 minute
-                location.reload();
-            }
-        }
-
-        document.addEventListener("mousemove", resetInactiveTime);
-        document.addEventListener("keypress", resetInactiveTime);
-        setInterval(incrementInactiveTime, 1000); // Check every second
-
     </script>
 </body>
 </html>
 """
 
-# Serve the HTML page at `/`
-
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_chatbot():
     return HTMLResponse(content=html_template)
-
-# Chatbot API with rate limiting and improved response formatting
 
 
 @app.post("/chat")
@@ -150,24 +143,29 @@ async def chat(request: Request):
 
         if not user_input:
             raise HTTPException(
-                status_code=400, detail="Input cannot be empty.")
+                status_code=400, detail="Input cannot be empty."
+            )
+
+        # Check if the input matches a keyword in links.json
+        for link_entry in links_data:
+            if link_entry["keyword"] in user_input:
+                return JSONResponse({"response": f"Here's a helpful link: {link_entry['link']}"})
 
         # Append user input to chat history
         chat_history.append({"role": "user", "content": user_input})
 
         # Generate system prompt with chat history for context
         system_prompt = """
-        You are a highly knowledgeable and professional Goldberg Computer Science (Dalhousie University) Help Desk AI.
-        Your job is to assist users with IT-related issues related to the Computer Science department.
+        You are the Dalhousie University Computer Science Help Desk AI.  
+Your role is to assist students, faculty, and staff with IT-related issues.
 
-        ### Guidelines:
-        1. **Scope:** Answer ONLY IT-related questions (e.g., Wi-Fi, password resets, software access).
-        2. **Clarity:** Responses must be clear, structured, and avoid unnecessary complexity.
-        3. **Conciseness:** Keep responses short and direct unless a detailed explanation is required.
-        4. **No Hallucinations:** If a question is outside your expertise, say:
-        "I'm here to assist with IT-related issues at Dalhousie University. For non-IT questions, please refer to the appropriate department."
-        5. **Guidance & Links:** When possible, provide official Dalhousie links for self-help.
-        6. **Follow-up Questions:** If needed, prompt the user for clarification instead of assuming.
+### Guidelines:
+1. **Always Provide a Link First:** If a link is available, provide it before giving step-by-step instructions.  
+2. **Concise Responses:** Keep answers within **2 to 3 sentences** whenever possible.  
+3. **No Hallucinations:** If unsure, say:  
+   "I'm here to assist with IT-related issues at Dalhousie University. For non-IT questions, please refer to the appropriate department."  
+4. **Encourage Self-Service:** Direct users to forms instead of explaining long steps.  
+5. **Official Guidance Only:** Use only official Dalhousie resources.  
         """
 
         conversation = [
@@ -175,15 +173,7 @@ async def chat(request: Request):
 
         # Call LLaMA 2 with chat history
         response = ollama.chat(model="llama2:13b", messages=conversation)
-
         bot_response = response["message"]["content"]
-
-        # Format specific responses for clarity
-        if "password reset" in user_input:
-            bot_response = "**Password Reset Instructions:**\n- Visit: [Dalhousie Password Reset](https://csid.cs.dal.ca)\n- If locked out, contact: helpdesk@cs.dal.ca"
-
-        elif "wifi" in user_input or "internet" in user_input:
-            bot_response = "**Wi-Fi Troubleshooting:**\n1. Ensure you're connecting to **Eduroam/Dalhousie** using your NetID@dal.ca.\n2. If you forgot your credentials, reset them at https://password.dal.ca.\n3. Still not working? Contact helpdesk@cs.dal.ca."
 
         # Append bot response to history
         chat_history.append({"role": "assistant", "content": bot_response})

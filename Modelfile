@@ -1,5 +1,4 @@
 from llama2:13b
-
 parameter efficient-tuning lora
-
 adapter custom_data.jsonl
+adapter links.json 
