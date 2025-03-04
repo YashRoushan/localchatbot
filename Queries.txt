@@ -3,5 +3,6 @@ These are the range of question this chatbot is made for:
 How do i access the room #/ playground #/ lab #
 I want to loan a laptop
 I want to reset my csid password
-I can't login to my timberlea.
+I can't login to my timberlea account.
 can you tell me where professor x is.
+I would like to connect to the printer.

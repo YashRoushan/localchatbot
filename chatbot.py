@@ -23,41 +23,37 @@ async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
         content={"error": "Too many requests. Please wait and try again later."}
     )
 
-# Load links from links.json
+# Links embedded directly into the code (replacing links.json)
+links_data = [
+    {"keyword": "password reset", "link": "https://csid.cs.dal.ca"},
+    {"keyword": "email", "link": "https://outlook.office.com"},
+    {"keyword": "wifi troubleshooting", "link": "https://wireless.dal.ca"},
+    {"keyword": "vpn issues", "link": "https://vpn.dal.ca"},
+    {"keyword": "equipment loan", "link": "https://helpdesk.cs.dal.ca"},
+    {"keyword": "borrow laptop", "link": "https://helpdesk.cs.dal.ca"},
+    {"keyword": "room booking", "link": "https://campusbookings.dal.ca/p/"},
+    {"keyword": "printer setup", "link": "https://print.cs.dal.ca/"},
+    {"keyword": "building access",
+        "link": "https://helpdesk.cs.dal.ca/form/access-request"}
+]
 
+# Chat history (Short-term memory)
+chat_history = deque(maxlen=5)
 
-def load_links():
-    try:
-        with open("links.json", "r") as file:
-            return json.load(file)
-    except Exception as e:
-        print(f"Error loading links.json: {e}")
-        return {}
-
-
-links_data = load_links()
-
-# Store chat history (Short-term memory)
-chat_history = deque(maxlen=5)  # Keeps the last 5 messages
-
-# IT Support Intent Detection
 FAQ_INTENTS = {
     "password reset": ["reset password", "forgot password", "change password"],
     "Wi-Fi issue": ["wifi problem", "can't connect to eduroam", "internet issue"],
     "email access": ["can't access email", "email login issue", "outlook not working"],
 }
 
-# Function to clean and preprocess user input
-
 
 def preprocess_input(user_input):
     user_input = user_input.lower().strip()
-    # Remove special characters
     user_input = re.sub(r"[^a-zA-Z0-9\s]", "", user_input)
 
-    # Fuzzy match to detect common IT support queries
     best_match = None
     highest_score = 0
+
     for intent, phrases in FAQ_INTENTS.items():
         match, score = process.extractOne(user_input, phrases)
         if score > highest_score:
@@ -67,7 +63,15 @@ def preprocess_input(user_input):
     return best_match if highest_score > 75 else user_input
 
 
-# HTML template for chatbot UI
+def find_matching_links(user_input):
+    matching_links = []
+    for entry in links_data:
+        if entry["keyword"] in user_input.lower():
+            matching_links.append(
+                f"<a href='{entry['link']}' target='_blank'>{entry['link']}</a>")
+    return matching_links
+
+
 html_template = """
 <!DOCTYPE html>
 <html lang="en">
@@ -90,19 +94,15 @@ html_template = """
     <p class="loading" id="loading">AI is thinking...</p>
     <input type="text" id="userInput" placeholder="Type a message..." onkeypress="handleKeyPress(event)">
     <button onclick="sendMessage()">Send</button>
-
     <script>
         async function sendMessage() {
             let userInput = document.getElementById("userInput").value;
             if (!userInput.trim()) return;
-            
             let chatbox = document.getElementById("chatbox");
             let loadingIndicator = document.getElementById("loading");
-            
             chatbox.innerHTML += `<div class="user-message">${userInput}</div>`;
             document.getElementById("userInput").value = "";
-            loadingIndicator.style.display = "block"; // Show loading message
-            
+            loadingIndicator.style.display = "block";
             try {
                 let response = await fetch("/chat", {
                     method: "POST",
@@ -114,10 +114,9 @@ html_template = """
             } catch (error) {
                 chatbox.innerHTML += `<div class="bot-message" style="color:red;">Error fetching response</div>`;
             } finally {
-                loadingIndicator.style.display = "none"; // Hide loading message
+                loadingIndicator.style.display = "none";
             }
         }
-
         function handleKeyPress(event) {
             if (event.key === "Enter") {
                 sendMessage();
@@ -135,7 +134,7 @@ async def serve_chatbot():
 
 
 @app.post("/chat")
-@limiter.limit("6/minute")  # Limit each user to 6 requests per minute
+@limiter.limit("6/minute")
 async def chat(request: Request):
     try:
         data = await request.json()
@@ -143,45 +142,43 @@ async def chat(request: Request):
 
         if not user_input:
             raise HTTPException(
-                status_code=400, detail="Input cannot be empty."
-            )
+                status_code=400, detail="Input cannot be empty.")
 
-        # Check if the input matches a keyword in links.json
-        for link_entry in links_data:
-            if link_entry["keyword"] in user_input:
-                return JSONResponse({"response": f"Here's a helpful link: {link_entry['link']}"})
-
-        # Append user input to chat history
         chat_history.append({"role": "user", "content": user_input})
 
-        # Generate system prompt with chat history for context
-        system_prompt = """
-        You are the Dalhousie University Computer Science Help Desk AI.  
-Your role is to assist students, faculty, and staff with IT-related issues.
+        # Check for links first and return if matched
+        matching_links = find_matching_links(user_input)
+        if matching_links:
+            link_response = "Here are some helpful links you can check:\n" + \
+                "\n".join(matching_links)
+            return JSONResponse({"response": link_response})
 
-### Guidelines:
-1. **Always Provide a Link First:** If a link is available, provide it before giving step-by-step instructions.  
-2. **Concise Responses:** Keep answers within **2 to 3 sentences** whenever possible.  
-3. **No Hallucinations:** If unsure, say:  
-   "I'm here to assist with IT-related issues at Dalhousie University. For non-IT questions, please refer to the appropriate department."  
-4. **Encourage Self-Service:** Direct users to forms instead of explaining long steps.  
-5. **Official Guidance Only:** Use only official Dalhousie resources.  
+        system_prompt = """
+        You are the Dalhousie University Computer Science Help Desk AI.
+        Your role is to assist students, faculty, and staff with IT-related issues.
+
+        Guidelines:
+        1. Always provide a link if a relevant one is available.
+        2. Keep responses within 2-3 sentences.
+        3. Never invent or hallucinate links. If you are unsure, say: "Please check Dalhousie's official IT resources."
+        4. If a system-provided link is attached, mention it directly like "You can also check this link: [link]".
+        5. Use only official Dalhousie resources.
         """
 
         conversation = [
             {"role": "system", "content": system_prompt}] + list(chat_history)
 
-        # Call LLaMA 2 with chat history
         response = ollama.chat(model="llama2:13b", messages=conversation)
         bot_response = response["message"]["content"]
 
-        # Append bot response to history
+        # Add any matching links to the response
+        if matching_links:
+            bot_response += "\n\nHere are some helpful links you can check:\n" + \
+                "\n".join(matching_links)
+
         chat_history.append({"role": "assistant", "content": bot_response})
 
         return JSONResponse({"response": bot_response})
 
     except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"error": "An error occurred while processing your request."}
-        )
+        return JSONResponse(status_code=500, content={"error": f"An error occurred: {str(e)}"})
